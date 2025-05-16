@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="js/commands.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/script.js"></script>
+  <script>
+    // Debug logging
+    console.log('Loading MyTerminal Advanced...');
+    
+    // Wait for both DOM and commands.js to load
+    window.addEventListener('load', function() {
+      console.log('Window loaded, initializing...');
+      if (typeof commandData === 'undefined') {
+        console.error('commandData not loaded!');
+        return;
+      }
+      
+      // Initialize commands
+      populateCommands();
+      console.log('Commands populated');
+      
+      // Initialize search functionality
+      const globalSearchInput = document.getElementById('searchBox');
+      if (globalSearchInput) {
+        console.log('Search input found, setting up listeners...');
+        let lastSearchTerm = '';
+        
+        globalSearchInput.addEventListener('input', (e) => {
+          const searchTerm = e.target.value.toLowerCase();
+          console.log('Searching for:', searchTerm);
+          
+          // Reset search if term is cleared
+          if (searchTerm === '') {
+            document.querySelectorAll('.cmd').forEach(cmd => {
+              cmd.style.display = '';
+              cmd.classList.remove('highlight-search', 'dimmed-search');
+            });
+            return;
+          }
+          
+          // Get current active tab
+          const currentTab = document.querySelector('.tab-content.active');
+          if (!currentTab) return;
+          
+          // Search in current tab
+          let foundInCurrentTab = false;
+          currentTab.querySelectorAll('.cmd').forEach(cmd => {
+            const text = cmd.textContent.toLowerCase();
+            if (text.includes(searchTerm)) {
+              cmd.style.display = '';
+              cmd.classList.add('highlight-search');
+              cmd.classList.remove('dimmed-search');
+              foundInCurrentTab = true;
+            } else {
+              cmd.classList.remove('highlight-search');
+              cmd.classList.add('dimmed-search');
+            }
+          });
+          
+          // If no matches in current tab, search other tabs
+          if (!foundInCurrentTab) {
+            console.log('No matches in current tab, searching others...');
+            const tabs = ['privesc', 'enum', 'recon', 'persist', 'exfil', 'post', 'recent'];
+            const currentTabId = currentTab.id;
+            const currentIndex = tabs.indexOf(currentTabId);
+            
+            // Search through other tabs
+            for (let i = 1; i <= tabs.length; i++) {
+              const nextIndex = (currentIndex + i) % tabs.length;
+              const nextTabId = tabs[nextIndex];
+              const nextTab = document.getElementById(nextTabId);
+              
+              if (!nextTab) continue;
+              
+              let hasMatch = false;
+              nextTab.querySelectorAll('.cmd').forEach(cmd => {
+                const text = cmd.textContent.toLowerCase();
+                if (text.includes(searchTerm)) {
+                  hasMatch = true;
+                }
+              });
+              
+              if (hasMatch) {
+                console.log('Found matches in tab:', nextTabId);
+                activateTab(nextTabId);
+                nextTab.querySelectorAll('.cmd').forEach(cmd => {
+                  const text = cmd.textContent.toLowerCase();
+                  if (text.includes(searchTerm)) {
+                    cmd.style.display = '';
+                    cmd.classList.add('highlight-search');
+                    cmd.classList.remove('dimmed-search');
+                  } else {
+                    cmd.classList.remove('highlight-search');
+                    cmd.classList.add('dimmed-search');
+                  }
+                });
+                break;
+              }
+            }
+          }
+        });
+      } else {
+        console.error('Search input not found!');
+      }
+    });
+  </script>
+  <title>MyTerminal Advanced</title>
+  <style>
+    /* Same styles as before */
+    body {
+      font-family: monospace;
+      background-color: #111;
+      color: #eee;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: #111;
+    }
+    nav {
+      background: #222;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+    }
+    nav .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    nav a {
+      color: #eee;
+      text-decoration: none;
+      margin: 0 10px 5px;
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    nav a:hover, nav a.active {
+      background-color: #007bff;
+      color: #fff;
+    }
+    .tab-content {
+      display: none;
+      padding: 20px;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .cmd-container {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+      gap: 10px;
+    }
+    .cmd {
+      background: #2a2a2a;
+      padding: 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      user-select: none;
+      white-space: pre-wrap;
+      flex: 1 1 calc(50% - 10px);
+      box-sizing: border-box;
+      word-break: break-all;
+      transition: background-color 0.2s ease, opacity 0.2s ease;
+    }
+    .cmd:hover {
+      background: #444;
+    }
+    .cmd.highlight-search {
+      background-color: #556b2f !important;
+      border: 1px solid #90ee90;
+      opacity: 1 !important;
+    }
+    .cmd.dimmed-search {
+      opacity: 0.3;
+    }
+    #searchBox {
+      padding: 8px 15px;
+      background-color: #333;
+      color: #eee;
+      border: 1px solid #555;
+      border-radius: 4px;
+      width: 300px;
+      font-size: 1em;
+    }
+    .main-title {
+      font-size: 1.5em;
+      color: #00aaff;
+      margin: 0;
+    }
+    h2 {
+      color: #ccc;
+      border-bottom: 1px solid #333;
+      padding-bottom: 4px;
+      margin-bottom: 15px;
+    }
+    .section-header {
+      color: #00aaff;
+      width: 100%;
+      border-bottom: 1px solid #444;
+      margin-top: 20px;
+      margin-bottom: 10px;
+      padding-bottom: 5px;
+    }
+
+    /* Reverse Shell Styles */
+    .reverse-shell-container {
+      padding: 20px;
+      max-width: 1000px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .reverse-shell-section {
+      background: #1c1c1c;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 25px;
+      width: 100%;
+      box-sizing: border-box;
+      margin: 0 auto;
+    }
+
+    #reverse.tab-content {
+      max-width: 100%;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    #reverse h2 {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .section-title {
+      color: #00aaff;
+      font-size: 1.2em;
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #333;
+      position: relative;
+    }
+
+    .github-link {
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      opacity: 0.6;
+      transition: opacity 0.2s;
+      display: flex;
+      align-items: center;
+    }
+
+    .github-link:hover {
+      opacity: 1;
+    }
+
+    .github-link svg {
+      width: 18px;
+      height: 18px;
+      margin-left: 8px;
+    }
+
+    .github-link::after {
+      content: "Source";
+      color: #00aaff;
+      font-size: 0.8em;
+      margin-right: 4px;
+    }
+
+    .input-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .input-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .input-group label {
+      color: #eee;
+      min-width: 80px;
+    }
+
+    .input-group input, .input-group select {
+      padding: 8px 12px;
+      background: #333;
+      color: #eee;
+      border: 1px solid #555;
+      border-radius: 4px;
+      min-width: 120px;
+    }
+
+    .listener-group {
+      margin-bottom: 20px;
+    }
+
+    .listener-group select {
+      width: 100%;
+      padding: 10px;
+      background: #333;
+      color: #eee;
+      border: 1px solid #555;
+      border-radius: 4px;
+      margin-bottom: 10px;
+    }
+
+    #listener-command {
+      height: 150px;
+      overflow-y: auto;
+      font-size: 14px;
+      line-height: 1.4;
+      padding: 10px;
+      box-sizing: border-box;
+    }
+
+    .command-section {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      min-height: 300px;
+    }
+
+    .command-list {
+      background: #1c1c1c;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 15px;
+      height: 300px;
+      overflow-y: auto;
+    }
+
+    .command-output {
+      background: #1a1a1a;
+      padding: 15px;
+      border-radius: 4px;
+      color: #0f0;
+      font-family: monospace;
+      white-space: pre;
+      border: 1px solid #333;
+      height: 100px;
+      font-size: 13px;
+      line-height: 1.4;
+      overflow: auto;
+    }
+
+    #reverse-shell-command {
+      height: 200px;
+    }
+
+    #listener-command {
+      height: 50px;
+      margin-top: 10px;
+    }
+
+    .highlighted-parameter {
+      color: #FFD700;
+      font-weight: bold;
+      display: inline;
+    }
+
+    .list-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .list-group-item {
+      background: #2a2a2a;
+      color: #eee;
+      padding: 10px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      text-align: left;
+      width: 100%;
+      transition: background-color 0.2s;
+    }
+
+    .list-group-item:hover {
+      background: #3a3a3a;
+    }
+
+    .list-group-item.active {
+      background: #007bff;
+      color: white;
+    }
+
+    .highlighted-parameter {
+      color: rgb(255, 255, 255);
+      font-weight: bold;
+    }
+
+    .highlighted-warning {
+      color: #ffa500;
+      margin-top: 5px;
+      font-size: 0.9em;
+    }
+
+    @media (max-width: 768px) {
+      .command-section {
+        grid-template-columns: 1fr;
+      }
+      
+      .input-group {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      
+      .input-item {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      
+      .input-group label {
+        min-width: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; background: #222;">
+      <h1 class="main-title">MyTerminal Advanced</h1>
+      <div id="globalSearchContainer">
+        <input type="text" id="searchBox" placeholder="Search all commands...">
+      </div>
+    </div>
+    <nav>
+      <div class="tabs">
+        <a href="#privesc" data-tab="privesc">Privilege Escalation</a>
+        <a href="#reverse" data-tab="reverse">Reverse Shell</a>
+        <a href="#enum" data-tab="enum">Enumeration</a>
+        <a href="#recon" data-tab="recon">Recon</a>
+        <a href="#persist" data-tab="persist">Persistence</a>
+        <a href="#exfil" data-tab="exfil">Exfiltration</a>
+        <a href="#post" data-tab="post">Post Exploitation</a>
+        <a href="#recent" data-tab="recent">Recent Files</a>
+      </div>
+    </nav>
+  </div>
+
+  <div id="privesc" class="tab-content">
+    <h2>Privilege Escalation</h2>
+    <div class="cmd-container"></div>
+  </div>
+
+    <div id="reverse" class="tab-content">
+      <h2>Reverse Shell Generator</h2>
+      <div class="reverse-shell-container">
+        <!-- Connection Settings Section -->
+        <div class="reverse-shell-section">
+          <div class="section-title">Connection Settings</div>
+          <div class="input-group">
+            <div class="input-item">
+              <label for="ip">IP:</label>
+              <input type="text" id="ip" value="10.10.10.10">
+            </div>
+            <div class="input-item">
+              <label for="port">Port:</label>
+              <input type="text" id="port" value="9001">
+            </div>
+            <div class="input-item">
+              <label for="shell">Shell:</label>
+              <select id="shell">
+                <option>/bin/bash</option>
+                <option>/bin/sh</option>
+                <option>cmd</option>
+                <option>powershell</option>
+                <option>/bin/zsh</option>
+                <option>/bin/ash</option>
+                <option>/bin/dash</option>
+                <option>/bin/tcsh</option>
+                <option>/bin/ksh</option>
+              </select>
+            </div>
+            <div class="input-item">
+              <label for="encoding">Encoding:</label>
+              <select id="encoding">
+                <option>None</option>
+                <option>Base64</option>
+                <option>URL</option>
+                <option>URL Double</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Listener Section -->
+        <div class="reverse-shell-section">
+          <div class="section-title">Listener Configuration</div>
+          <div class="listener-group">
+            <label for="listener-selection">Select Listener Type:</label>
+            <select id="listener-selection" onchange="rsg.updateListenerCommand()">
+              <option>nc -lvnp {port}</option>
+              <option>ncat -lvnp {port}</option>
+              <option>socat TCP-LISTEN:{port} -</option>
+              <option>python3 -m http.server {port}</option>
+              <option>php -S 0.0.0.0:{port}</option>
+              <option>ruby -run -ehttpd . -p{port}</option>
+              <option>msfconsole -q -x "use multi/handler; set payload {payload}; set LHOST {ip}; set LPORT {port}; run"</option>
+              <option>hoaxshell -t {type} -p {port}</option>
+            </select>
+            <div id="port-privileges-warning" class="highlighted-warning" style="visibility: hidden;">
+              * Ports below 1024 require root privileges
+            </div>
+            <pre id="listener-command" class="command-output"></pre>
+          </div>
+        </div>
+
+        <!-- Reverse Shell Commands Section -->
+        <div class="reverse-shell-section">
+          <div class="section-title">
+            Reverse Shell Commands
+            <a href="https://github.com/0dayCTF/reverse-shell-generator" target="_blank" class="github-link" title="View source on GitHub">
+              <svg height="24" width="24" viewBox="0 0 16 16" fill="#00aaff">
+                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
+              </svg>
+            </a>
+          </div>
+          <div class="command-section">
+            <div class="command-list">
+              <div id="reverse-shell-selection" class="list-group"></div>
+            </div>
+            <pre id="reverse-shell-command" class="command-output"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  <div id="enum" class="tab-content">
+    <h2>Enumeration</h2>
+    <div class="cmd-container"></div>
+  </div>
+
+  <div id="recon" class="tab-content">
+    <h2>Recon</h2>
+    <div class="cmd-container"></div>
+  </div>
+
+  <div id="persist" class="tab-content">
+    <h2>Persistence</h2>
+    <div class="cmd-container"></div>
+  </div>
+
+  <div id="exfil" class="tab-content">
+    <h2>Exfiltration</h2>
+    <div class="cmd-container"></div>
+  </div>
+
+  <div id="post" class="tab-content">
+    <h2>Post Exploitation</h2>
+    <div class="cmd-container"></div>
+  </div>
+
+  <div id="recent" class="tab-content">
+    <h2>Recent Files</h2>
+    <div class="cmd-container"></div>
+  </div>
+
+  <script>
+    // Tab navigation logic
+    const mainTabs = document.querySelectorAll('nav .tabs a');
+    const mainTabContents = document.querySelectorAll('body > .tab-content');
+    const globalSearchInput = document.getElementById('searchBox');
+    const tabs = ['privesc', 'enum', 'recon', 'persist', 'exfil', 'post', 'recent'];
+
+    mainTabs.forEach(tab => {
+      tab.addEventListener('click', (e) => {
+        e.preventDefault();
+        const targetTabId = e.target.getAttribute('data-tab');
+        activateTab(targetTabId);
+        window.location.hash = targetTabId;
+      });
+    });
+
+    function activateTab(tabId) {
+      mainTabs.forEach(t => t.classList.remove('active'));
+      const currentTabLink = document.querySelector(`nav .tabs a[data-tab="${tabId}"]`);
+      if (currentTabLink) currentTabLink.classList.add('active');
+
+      mainTabContents.forEach(content => {
+        if (content.id === tabId) {
+          content.classList.add('active');
+        } else {
+          content.classList.remove('active');
+        }
+      });
+
+      // Initialize reverse shell tab if activated
+      if (tabId === 'reverse' && typeof rsgMainInit === 'function') {
+        rsgMainInit();
+      }
+    }
+
+    // Set initial active tab based on URL hash or default to first tab
+    const hash = window.location.hash.substring(1);
+    if (hash) {
+      activateTab(hash);
+    } else {
+      activateTab('privesc');
+    }
+
+    // Enhanced global search with auto-tab switching and improved highlighting
+    const searchInput = document.getElementById('searchBox');
+    if (searchInput) {
+      console.log('Search input found, setting up listeners...');
+      let lastSearchTerm = '';
+      let currentTabIndex = 0;
+      
+      function clearHighlights() {
+        document.querySelectorAll('.cmd').forEach(cmd => {
+          cmd.classList.remove('highlight-search', 'dimmed-search');
+        });
+      }
+
+      function searchInTab(tab, searchTerm) {
+        const commands = tab.querySelectorAll('.cmd');
+        let hasMatch = false;
+        
+        commands.forEach(cmd => {
+          const text = cmd.textContent.toLowerCase();
+          if (text.includes(searchTerm)) {
+            cmd.classList.add('highlight-search');
+            cmd.classList.remove('dimmed-search');
+            hasMatch = true;
+          } else {
+            cmd.classList.remove('highlight-search');
+            cmd.classList.add('dimmed-search');
+          }
+        });
+        
+        return hasMatch;
+      }
+
+      function findNextTabWithMatches(searchTerm, startIndex) {
+        for (let i = 0; i < tabs.length; i++) {
+          const tabIndex = (startIndex + i) % tabs.length;
+          const tabId = tabs[tabIndex];
+          if (tabId === 'reverse') continue; // Skip reverse shell tab
+          
+          const tab = document.getElementById(tabId);
+          if (!tab) continue;
+          
+          const hasMatch = searchInTab(tab, searchTerm);
+          if (hasMatch) {
+            return tabIndex;
+          }
+        }
+        return -1;
+      }
+
+      searchInput.addEventListener('input', (e) => {
+        const searchTerm = e.target.value.toLowerCase();
+        console.log('Searching for:', searchTerm);
+        
+        // Reset search if term is cleared
+        if (searchTerm === '') {
+          clearHighlights();
+          lastSearchTerm = '';
+          return;
+        }
+
+        // Get current active tab
+        const currentTab = document.querySelector('.tab-content.active');
+        if (!currentTab) return;
+        
+        currentTabIndex = tabs.indexOf(currentTab.id);
+        if (currentTabIndex === -1) return;
+
+        // Search in current tab first
+        const foundInCurrentTab = searchInTab(currentTab, searchTerm);
+
+        // If no matches in current tab or new search term, search in other tabs
+        if (!foundInCurrentTab || searchTerm !== lastSearchTerm) {
+          const nextTabIndex = findNextTabWithMatches(searchTerm, currentTabIndex + 1);
+          
+          if (nextTabIndex !== -1 && nextTabIndex !== currentTabIndex) {
+            activateTab(tabs[nextTabIndex]);
+          }
+        }
+
+        lastSearchTerm = searchTerm;
+      });
+    }
+  </script>
+</body>
+</html>
