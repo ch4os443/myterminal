@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AWS Key Parser</title>
+  <style>
+    body { background: #111; color: #eee; font-family: monospace; padding: 20px; }
+    textarea, pre { width: 100%; background: #222; color: #0f0; border: 1px solid #333; padding: 10px; margin-bottom: 20px; }
+    button { background: #444; color: #fff; border: none; padding: 10px 20px; cursor: pointer; }
+    button:hover { background: #666; }
+  </style>
+</head>
+<body>
+
+<h2>AWS Key → Export + Federation Generator</h2>
+
+<textarea id="input" rows="10" placeholder="Cole aqui o conteúdo contendo AWS credentials..."></textarea>
+<button id="parseBtn">Gerar comandos</button>
+
+<h3>Export Commands:</h3>
+<pre id="exports"></pre>
+
+<h3>Token Federation (GetSessionToken):</h3>
+<pre id="federation"></pre>
+
+<h3>Enumerate-IAM Command:</h3>
+<pre id="enumerate"></pre>
+
+<h3>Login Federado Manual:</h3>
+<pre id="loginurl"></pre>
+
+<script>
+document.getElementById("parseBtn").addEventListener("click", function () {
+  const input = document.getElementById("input").value;
+
+  const accessKeyMatch = input.match(/(A3T|ASI|AKIA)[A-Z0-9]{16}/);
+  const secretKeyMatch = input.match(/[A-Za-z0-9\/+=]{40}/);
+  const sessionTokenMatch = input.match(/[A-Za-z0-9\/+=]{200,}/);
+
+  const accessKey = accessKeyMatch ? accessKeyMatch[0] : null;
+  const secretKey = secretKeyMatch ? secretKeyMatch[0] : null;
+  const sessionToken = sessionTokenMatch ? sessionTokenMatch[0] : null;
+
+  let out = "";
+  let federation = "";
+  let enumerate = "";
+  let loginurl = "";
+
+  if (accessKey && secretKey) {
+    out += 'export AWS_ACCESS_KEY_ID=' + accessKey + "\n";
+    out += 'export AWS_SECRET_ACCESS_KEY=' + secretKey + "\n";
+    if (sessionToken) {
+      out += 'export AWS_SESSION_TOKEN=' + JSON.stringify(sessionToken) + "\n";
+    }
+
+    federation += "aws sts get-caller-identity\n\n";
+    federation += "aws sts get-session-token --duration-seconds 129600";
+
+    enumerate += "enumerate-iam --access-key-id $AWS_ACCESS_KEY_ID --secret-access-key $AWS_SECRET_ACCESS_KEY";
+    if (sessionToken) {
+      enumerate += " --session-token \"$AWS_SESSION_TOKEN\"";
+    }
+
+    if (sessionToken) {
+      loginurl += "json='{\"sessionId\":\"" + accessKey + "\",\"sessionKey\":\"" + secretKey + "\",\"sessionToken\":\"" + sessionToken + "\"}'\n";
+      loginurl += "URLENCODED=$(python3 -c \"import urllib.parse; import json; print(urllib.parse.quote('''" + JSON.stringify('{\"sessionId\":\"' + accessKey + '\",\"sessionKey\":\"' + secretKey + '\",\"sessionToken\":\"' + sessionToken + '\"}') + "'''))\")\n";
+      loginurl += "SIGNIN_TOKEN=$(curl -s \"https://signin.aws.amazon.com/federation?Action=getSigninToken&Session=$URLENCODED\" | grep -o '\"SigninToken\":\"[^\"]*\"' | sed 's/.*:\"//;s/\"//')\n";
+      loginurl += "echo \"https://signin.aws.amazon.com/federation?Action=login&Issuer=example.com&Destination=https://console.aws.amazon.com/&SigninToken=$SIGNIN_TOKEN\"";
+    }
+  } else {
+    out = "\u274c Chaves não detectadas corretamente.";
+  }
+
+  document.getElementById("exports").textContent = out;
+  document.getElementById("federation").textContent = federation;
+  document.getElementById("enumerate").textContent = enumerate;
+  document.getElementById("loginurl").textContent = loginurl;
+});
+</script>
+
+</body>
+</html>
